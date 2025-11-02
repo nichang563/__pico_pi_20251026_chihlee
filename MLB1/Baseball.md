@@ -6,6 +6,7 @@
 ```
 恭喜 道奇 封王
 Blue Jay lose @ game7
+game1~7
 ```
 
 
