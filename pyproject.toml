@@ -1,0 +1,7 @@
+[project]
+name = "pico-pi-20251026-chihlee"
+version = "0.1.0"
+description = "樹莓派和pico"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
