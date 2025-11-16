@@ -1,0 +1,16 @@
+{
+    // 編輯器設定
+    "editor.lineNumbers": "on",
+    
+    // 對於 Jupyter Notebook 也要顯示行號
+    "notebook.lineNumbers": "on",
+    
+    // 其他實用的編輯器設定
+    "editor.wordWrap": "off",
+    "editor.minimap.enabled": true,
+    "editor.rulers": [],
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true
+}
+
+
