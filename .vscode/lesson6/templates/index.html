@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MQTT 感測器監控系統</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 30px;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }
+        
+        .control-panel {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+        
+        .btn-connect {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .btn-connect:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+        }
+        
+        .btn-disconnect {
+            background: #f44336;
+            color: white;
+        }
+        
+        .btn-disconnect:hover {
+            background: #da190b;
+            transform: translateY(-2px);
+        }
+        
+        .status-indicator {
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: bold;
+            display: inline-block;
+        }
+        
+        .status-connected {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .status-disconnected {
+            background: #f44336;
+            color: white;
+        }
+        
+        .status-connecting {
+            background: #ff9800;
+            color: white;
+        }
+        
+        .data-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .data-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            text-align: center;
+        }
+        
+        .data-card h3 {
+            font-size: 1.2em;
+            margin-bottom: 15px;
+            opacity: 0.9;
+        }
+        
+        .data-card .value {
+            font-size: 3em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .data-card .status {
+            font-size: 1em;
+            opacity: 0.8;
+        }
+        
+        .chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+        
+        .chart-container h2 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+        
+        .debug-panel {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+        
+        .debug-panel h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+        
+        .debug-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+        }
+        
+        .debug-item {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        
+        .debug-item strong {
+            display: block;
+            color: #666;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+        
+        .debug-item span {
+            color: #333;
+            font-size: 1.1em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 MQTT 感測器監控系統</h1>
+        
+        <!-- 控制面板 -->
+        <div class="control-panel">
+            <button class="btn-connect" onclick="connectMQTT()">🔌 連線 MQTT</button>
+            <button class="btn-disconnect" onclick="disconnectMQTT()">❌ 斷開連線</button>
+            <div id="statusIndicator" class="status-indicator status-disconnected">❌ 未連線</div>
+        </div>
+        
+        <!-- 數據顯示區域 -->
+        <div class="data-grid">
+            <div class="data-card">
+                <h3>💡 電燈狀態</h3>
+                <div class="value" id="lightStatus">未知</div>
+                <div class="status" id="lightStatusText">等待數據...</div>
+            </div>
+            
+            <div class="data-card">
+                <h3>🌡️ 客廳溫度</h3>
+                <div class="value" id="temperature">--</div>
+                <div class="status" id="temperatureStatus">等待數據...</div>
+            </div>
+            
+            <div class="data-card">
+                <h3>💧 客廳濕度</h3>
+                <div class="value" id="humidity">--</div>
+                <div class="status" id="humidityStatus">等待數據...</div>
+            </div>
+        </div>
+        
+        <!-- 圖表區域 -->
+        <div class="chart-container">
+            <h2>📈 溫濕度歷史趨勢圖</h2>
+            <canvas id="chart"></canvas>
+        </div>
+        
+        <!-- 調試資訊 -->
+        <div class="debug-panel">
+            <h3>🔍 調試資訊</h3>
+            <div class="debug-info">
+                <div class="debug-item">
+                    <strong>連線狀態</strong>
+                    <span id="debugConnection">未連線</span>
+                </div>
+                <div class="debug-item">
+                    <strong>溫度</strong>
+                    <span id="debugTemperature">--</span>
+                </div>
+                <div class="debug-item">
+                    <strong>濕度</strong>
+                    <span id="debugHumidity">--</span>
+                </div>
+                <div class="debug-item">
+                    <strong>電燈狀態</strong>
+                    <span id="debugLight">未知</span>
+                </div>
+                <div class="debug-item">
+                    <strong>歷史記錄數</strong>
+                    <span id="debugHistoryCount">0</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let chart = null;
+        let chartData = {
+            labels: [],
+            temperature: [],
+            humidity: []
+        };
+        
+        // 初始化圖表
+        function initChart() {
+            const ctx = document.getElementById('chart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: chartData.labels,
+                    datasets: [{
+                        label: '溫度 (°C)',
+                        data: chartData.temperature,
+                        borderColor: 'rgb(255, 99, 132)',
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                        tension: 0.1
+                    }, {
+                        label: '濕度 (%)',
+                        data: chartData.humidity,
+                        borderColor: 'rgb(54, 162, 235)',
+                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    scales: {
+                        y: {
+                            beginAtZero: false
+                        }
+                    }
+                }
+            });
+        }
+        
+        // 更新數據顯示
+        function updateData(data) {
+            // 更新狀態指示器
+            const statusIndicator = document.getElementById('statusIndicator');
+            if (data.is_connected) {
+                statusIndicator.className = 'status-indicator status-connected';
+                statusIndicator.textContent = '✅ 已連線';
+            } else {
+                statusIndicator.className = 'status-indicator status-disconnected';
+                statusIndicator.textContent = '❌ ' + data.connection_status;
+            }
+            
+            // 更新電燈狀態
+            const lightStatus = document.getElementById('lightStatus');
+            const lightStatusText = document.getElementById('lightStatusText');
+            if (data.light_status === '開') {
+                lightStatus.textContent = '🟢 開';
+                lightStatusText.textContent = '電燈目前是開啟狀態';
+            } else if (data.light_status === '關') {
+                lightStatus.textContent = '⚫ 關';
+                lightStatusText.textContent = '電燈目前是關閉狀態';
+            } else {
+                lightStatus.textContent = '⚪ 未知';
+                lightStatusText.textContent = '尚未收到電燈狀態數據';
+            }
+            
+            // 更新溫度
+            const temperature = document.getElementById('temperature');
+            const temperatureStatus = document.getElementById('temperatureStatus');
+            if (data.temperature !== null && data.temperature !== undefined) {
+                temperature.textContent = data.temperature.toFixed(1) + ' °C';
+                if (data.temperature < 20) {
+                    temperatureStatus.textContent = '溫度較低';
+                } else if (data.temperature > 28) {
+                    temperatureStatus.textContent = '溫度較高';
+                } else {
+                    temperatureStatus.textContent = '溫度正常';
+                }
+            } else {
+                temperature.textContent = '-- °C';
+                temperatureStatus.textContent = '尚未收到溫度數據';
+            }
+            
+            // 更新濕度
+            const humidity = document.getElementById('humidity');
+            const humidityStatus = document.getElementById('humidityStatus');
+            if (data.humidity !== null && data.humidity !== undefined) {
+                humidity.textContent = data.humidity.toFixed(1) + ' %';
+                if (data.humidity < 30) {
+                    humidityStatus.textContent = '濕度較低';
+                } else if (data.humidity > 70) {
+                    humidityStatus.textContent = '濕度較高';
+                } else {
+                    humidityStatus.textContent = '濕度正常';
+                }
+            } else {
+                humidity.textContent = '-- %';
+                humidityStatus.textContent = '尚未收到濕度數據';
+            }
+            
+            // 更新調試資訊
+            document.getElementById('debugConnection').textContent = data.connection_status;
+            document.getElementById('debugTemperature').textContent = 
+                data.temperature !== null ? data.temperature.toFixed(1) + '°C' : '--';
+            document.getElementById('debugHumidity').textContent = 
+                data.humidity !== null ? data.humidity.toFixed(1) + '%' : '--';
+            document.getElementById('debugLight').textContent = data.light_status;
+            document.getElementById('debugHistoryCount').textContent = data.history_count;
+        }
+        
+        // 更新圖表
+        function updateChart(history) {
+            if (history && history.length > 0) {
+                chartData.labels = history.map(item => item.時間);
+                chartData.temperature = history.map(item => item.溫度);
+                chartData.humidity = history.map(item => item.濕度);
+                
+                if (chart) {
+                    chart.data.labels = chartData.labels;
+                    chart.data.datasets[0].data = chartData.temperature;
+                    chart.data.datasets[1].data = chartData.humidity;
+                    chart.update();
+                }
+            }
+        }
+        
+        // 獲取數據
+        async function fetchData() {
+            try {
+                const response = await fetch('/api/data');
+                const data = await response.json();
+                updateData(data);
+            } catch (error) {
+                console.error('獲取數據失敗:', error);
+            }
+        }
+        
+        // 獲取歷史數據
+        async function fetchHistory() {
+            try {
+                const response = await fetch('/api/history');
+                const data = await response.json();
+                updateChart(data.history);
+            } catch (error) {
+                console.error('獲取歷史數據失敗:', error);
+            }
+        }
+        
+        // 連線 MQTT
+        async function connectMQTT() {
+            try {
+                const response = await fetch('/api/connect', { method: 'POST' });
+                const data = await response.json();
+                alert('連線狀態: ' + data.connection_status);
+                fetchData();
+            } catch (error) {
+                console.error('連線失敗:', error);
+                alert('連線失敗: ' + error.message);
+            }
+        }
+        
+        // 斷開 MQTT
+        async function disconnectMQTT() {
+            try {
+                const response = await fetch('/api/disconnect', { method: 'POST' });
+                const data = await response.json();
+                alert('已斷開連線');
+                fetchData();
+            } catch (error) {
+                console.error('斷開連線失敗:', error);
+            }
+        }
+        
+        // 初始化
+        initChart();
+        fetchData();
+        fetchHistory();
+        
+        // 每1秒更新一次數據
+        setInterval(() => {
+            fetchData();
+            fetchHistory();
+        }, 1000);
+    </script>
+</body>
+</html>
+
