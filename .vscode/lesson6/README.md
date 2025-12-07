@@ -116,6 +116,167 @@ sudo systemctl enable mosquitto
 - 濕度：`humidity` 或 `humi`
 - 電燈：`light_status` 或 `light`
 
+## 📡 Pico W 整合指南
+
+### 連線參數
+
+| 參數 | 值 | 說明 |
+|------|---|------|
+| **MQTT Broker** | 電腦 IP 位址 | 例如：`192.168.1.100` |
+| **MQTT Port** | `1883` | 預設 MQTT 埠 |
+| **MQTT Topic** | `客廳/感測器` | 必須完全相同（含中文） |
+| **Client ID** | `pico_sensor` | 或任意唯一名稱 |
+
+### Pico W 範例程式碼
+
+```python
+import json
+import network
+import time
+from umqtt.simple import MQTTClient
+from machine import Pin
+import dht
+
+# WiFi 設定
+WIFI_SSID = "你的WiFi名稱"
+WIFI_PASSWORD = "你的WiFi密碼"
+
+# MQTT 設定
+MQTT_BROKER = "192.168.1.100"  # 替換成你的電腦 IP
+MQTT_PORT = 1883
+MQTT_TOPIC = "客廳/感測器"
+CLIENT_ID = "pico_sensor"
+
+# 硬體設定
+led = Pin(15, Pin.OUT)  # LED 控制腳位
+sensor = dht.DHT11(Pin(16))  # DHT11 感測器腳位（或使用 DHT22）
+
+# 連接 WiFi
+def connect_wifi():
+    wlan = network.WLAN(network.STA_IF)
+    wlan.active(True)
+    wlan.connect(WIFI_SSID, WIFI_PASSWORD)
+    
+    print("正在連接 WiFi...")
+    max_wait = 10
+    while max_wait > 0:
+        if wlan.status() < 0 or wlan.status() >= 3:
+            break
+        max_wait -= 1
+        print("等待連線...")
+        time.sleep(1)
+    
+    if wlan.status() != 3:
+        raise RuntimeError("WiFi 連線失敗")
+    else:
+        print("✅ WiFi 已連接")
+        status = wlan.ifconfig()
+        print(f"   IP: {status[0]}")
+        return status[0]
+
+# 連接 MQTT
+def connect_mqtt():
+    client = MQTTClient(CLIENT_ID, MQTT_BROKER, MQTT_PORT)
+    client.connect()
+    print("✅ MQTT 已連接")
+    return client
+
+# 主程式
+def main():
+    # 連接 WiFi
+    connect_wifi()
+    
+    # 連接 MQTT
+    client = connect_mqtt()
+    
+    print(f"開始發送數據到主題: {MQTT_TOPIC}")
+    
+    while True:
+        try:
+            # 讀取感測器數據
+            sensor.measure()
+            temp = sensor.temperature()
+            humi = sensor.humidity()
+            light = "開" if led.value() else "關"
+            
+            # 建立 JSON 訊息
+            payload = json.dumps({
+                "temperature": temp,
+                "humidity": humi,
+                "light_status": light
+            })
+            
+            # 發送 MQTT 訊息
+            client.publish(MQTT_TOPIC, payload)
+            print(f"📤 已發送: 溫度={temp}°C, 濕度={humi}%, 電燈={light}")
+            
+            # 每 5 秒發送一次
+            time.sleep(5)
+            
+        except OSError as e:
+            print(f"感測器讀取錯誤: {e}")
+            time.sleep(2)
+        except Exception as e:
+            print(f"發生錯誤: {e}")
+            # 嘗試重新連接
+            try:
+                client = connect_mqtt()
+            except:
+                print("MQTT 重連失敗，等待 10 秒後重試...")
+                time.sleep(10)
+
+# 執行主程式
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n程式已停止")
+    except Exception as e:
+        print(f"錯誤: {e}")
+```
+
+### 📝 訊息格式說明
+
+**方式 1：使用完整欄位名稱（推薦）**
+```json
+{
+  "temperature": 25.6,
+  "humidity": 65.2,
+  "light_status": "開"
+}
+```
+
+**方式 2：使用簡短欄位名稱**
+```json
+{
+  "temp": 25.6,
+  "humi": 65.2,
+  "light": "開"
+}
+```
+
+### 🔑 重要提醒
+
+1. **電燈狀態必須使用中文**：`"開"` 或 `"關"`（不是 "on"/"off"）
+2. **Topic 名稱必須完全相同**：包含中文字元 `客廳/感測器`
+3. **數值型態**：溫度和濕度必須是數字（int 或 float）
+4. **JSON 格式**：使用 `json.dumps()` 序列化，確保格式正確
+5. **QoS 建議**：發布時可設定 QoS=1 確保訊息送達
+
+### 📦 所需的 MicroPython 函式庫
+
+在 Pico W 上需要安裝：
+- `umqtt.simple` - MQTT 客戶端（通常已內建）
+- DHT 感測器驅動（如果使用 DHT11/DHT22）
+
+### 🧪 測試步驟
+
+1. 修改程式中的 WiFi 和 MQTT Broker IP
+2. 上傳程式到 Pico W
+3. 啟動 Flask 應用程式
+4. 執行 Pico W 程式
+5. 在網頁上即可看到即時數據更新
+
 ## 📈 效能比較
 
 | 項目 | Streamlit 版本 | Flask 版本 |
